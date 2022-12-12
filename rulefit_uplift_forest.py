@@ -7,6 +7,7 @@ from sklearn.ensemble import GradientBoostingRegressor, GradientBoostingClassifi
 from sklearn.linear_model import LassoCV,LogisticRegressionCV
 from functools import reduce
 import kmeans1d
+from sklift.metrics import uplift_auc_score
 from uplift_forest_customed import UpliftRfNewClassifier
 #from causalml.inference.tree.causaltree import CausalForestRegressor
 
@@ -674,3 +675,39 @@ class RuleFit(BaseEstimator, TransformerMixin):
            
         return_df = pd.DataFrame({'feature':self.feature_names, 'importance':feature_imp})
         return(return_df)
+    
+    def eval_auuc(self, X, y, trt):
+        uplift_ensemble = self.tree_generator.predict(X).ravel()
+        uplift_final = self.predict(X)
+        auc1 = uplift_auc_score(y_true=y, uplift=uplift_ensemble, treatment=trt)
+        auc2 = uplift_auc_score(y_true=y, uplift=uplift_final, treatment=trt)
+        return auc1, auc2
+
+    def eval_qini(self, X, y, trt, neg=True):
+        uplift_ensemble = self.tree_generator.predict(X).ravel()
+        uplift_final = self.predict(X)
+        qini1 = qini_auc_score(y_true=y, uplift=uplift_ensemble, treatment=trt, negative_effect=neg)
+        qini2 = qini_auc_score(y_true=y, uplift=uplift_final, treatment=trt, negative_effect=neg)
+        return qini1, qini2
+
+    def eval_pehe(self, X, y, trt, model0, model1, ps):
+        uplift_ensemble = self.tree_generator.predict(X).ravel()
+        uplift_final = self.predict(X).flatten()
+
+        plugin0 = model0.predict(X)
+        plugin1 = model1.predict(X)
+        t_plugin = plugin1 - plugin0
+        a = (trt - ps)
+        ident = np.array([1]*len(ps))
+        c = (ps*(ident-ps))
+        b = np.array([2]*len(trt))*trt*(trt-ps) / c
+        plugin_ensemble = (t_plugin - uplift_ensemble)**2
+        plugin_final = (t_plugin-uplift_final)**2
+
+        l_de_ensemble = (ident - b) * t_plugin**2 + b*y*(t_plugin - uplift_ensemble) + (- a*(t_plugin - uplift_ensemble)**2 + uplift_ensemble**2)
+        l_de_final = (ident - b) * plugin_final**2 + b*y*(plugin_ensemble - uplift_final) + (- a*(plugin_ensemble - uplift_final)**2 + uplift_final**2)
+
+        pehe_ensemble = (np.sum(l_de_ensemble) + np.sum(plugin_ensemble))/X.shape[0]
+        pehe_final = (np.sum(l_de_final) + np.sum(plugin_final))/X.shape[0]
+        
+        return pehe_ensemble, pehe_final
