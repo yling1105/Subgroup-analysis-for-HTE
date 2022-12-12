@@ -7,7 +7,7 @@ from sklearn.ensemble import GradientBoostingRegressor, GradientBoostingClassifi
 from sklearn.linear_model import LassoCV,LogisticRegressionCV
 from functools import reduce
 import kmeans1d
-from sklift.metrics import uplift_auc_score
+from sklift.metrics import uplift_auc_score, qini_auc_score
 from uplift_forest_customed import UpliftRfNewClassifier
 #from causalml.inference.tree.causaltree import CausalForestRegressor
 
