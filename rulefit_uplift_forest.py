@@ -311,15 +311,8 @@ class RuleEnsemble():
             return df['split_val'], list(df[f_name].unique())
         return clusters
         
-        
 
-
-
-
-
-
-
-class RuleFit(BaseEstimator, TransformerMixin):
+class CausalRuleEnsembling(BaseEstimator, TransformerMixin):
     """Rulefit class
     Parameters
     ----------
