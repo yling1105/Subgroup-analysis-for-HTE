@@ -22,6 +22,7 @@ class RuleCondition():
                  threshold,
                  operator,
                  support,
+                 nnt,
                  n_treatment,
                  n_control,
                  feature_name = None):
@@ -32,6 +33,7 @@ class RuleCondition():
         self.n_treatment = n_treatment,
         self.n_control = n_control,
         self.feature_name = feature_name
+        self.nnt = nnt
 
 
     def __repr__(self):
@@ -120,13 +122,14 @@ class FriedScale():
 
 
 class Rule():
-    """Class for binary Rules from list of conditions
-    Warning: this class should not be used directly.
+    """
+    Class for binary Rules from list of conditions
     """
     def __init__(self,
                  rule_conditions,prediction_value):
         self.conditions = set(rule_conditions)
         self.support = min([x.support for x in rule_conditions])
+        self.nnt = min([x.nnt for x in rule_conditions])
         self.prediction_value=prediction_value
         self.rule_direction=None
     def transform(self, X):
@@ -174,12 +177,14 @@ def extract_rules_from_uplift_tree(tree, alpha = 0.05, feature_names=None):
             threshold = parent_val
             ctrl = int(re.findall(r"\d+", node.summary['group_size'])[0])
             treatment = int(re.findall(r"\d+", node.summary['group_size'])[1])
+            nnt = ctrl + treatment
             support = (ctrl + treatment) / ttl_sample_size
             feature_index = feature_names.index(feature_name)
             rule_condition = RuleCondition(feature_index=feature_index,
                                            threshold=threshold,
                                            operator=operator,
                                        support = support,
+                                       nnt = nnt,
                                        n_treatment = treatment,
                                        n_control = ctrl,                                   
                                        feature_name=feature_name)  
@@ -188,7 +193,7 @@ def extract_rules_from_uplift_tree(tree, alpha = 0.05, feature_names=None):
             new_conditions = []
         if node.trueBranch == None and node.falseBranch == None:
             if node.upliftScore[1] < alpha:
-                print(cnt)
+                #print(cnt)
                 new_rule = Rule(new_conditions, node.matchScore)
                 rules.update([new_rule])
                 #print(rules)
@@ -355,6 +360,7 @@ class CausalRuleEnsembling(BaseEstimator, TransformerMixin):
             tree_depth=5,
             min_samples_leaf=50,
             min_samples_treatment=25,
+            n_reg = 5,
             tree_eval_func = 'KL',
             sample_fract='default',
             max_rules=2000,
@@ -367,6 +373,7 @@ class CausalRuleEnsembling(BaseEstimator, TransformerMixin):
             Cs=None,
             cv=3,
             tol=0.0001,
+            max_iter = 1000,
             n_jobs=None,
             random_state=None):
         # Parameters for random forest classifier  
@@ -389,6 +396,7 @@ class CausalRuleEnsembling(BaseEstimator, TransformerMixin):
         self.random_state=random_state
         self.model_type=model_type
         self.cv=cv
+        self.n_reg = n_reg
         self.tol=tol
         # LassoCV default max_iter is 1000 while LogisticRegressionCV 100.
         self.max_iter=1000 if 'regress' else 1000
@@ -442,7 +450,7 @@ class CausalRuleEnsembling(BaseEstimator, TransformerMixin):
                                                             max_depth=self.tree_depth, # reduce
                                                             min_samples_leaf=self.min_samples_leaf,
                                                             min_samples_treatment=self.min_samples_treatment,
-                                                            n_reg=10,
+                                                            n_reg=self.n_reg,
                                                             random_state=self.random_state,
                                                             evaluationFunction=self.tree_eval_func)
                 ## fit tree generator
@@ -519,6 +527,13 @@ class CausalRuleEnsembling(BaseEstimator, TransformerMixin):
                 if X_rules.shape[0] >0:
                     X_concat = np.concatenate((X_concat, X_rules), axis=1)
         return self.lscv.predict(X_concat)
+    
+    def ensemble_predict(self, X):
+        """
+        Predict outcomes get from intermediate ensemble algorithm
+        """
+        return self.tree_generator.predict(X)
+
 
     def predict_proba(self, X):
         """Predict outcome probability for X, if model type supports probability prediction method
@@ -602,8 +617,8 @@ class CausalRuleEnsembling(BaseEstimator, TransformerMixin):
                 rkx = rule.transform(subregion)
                 importance = sum(abs(coef) * abs(rkx - rule.support))/len(subregion)
 
-            output_rules += [(rule.__str__(), 'rule', coef,  rule.support, importance)]
-        rules = pd.DataFrame(output_rules, columns=["rule", "type","coef", "support", "importance"])
+            output_rules += [(rule.__str__(), 'rule', coef,  rule.nnt ,rule.support, importance)]
+        rules = pd.DataFrame(output_rules, columns=["rule", "type", "coef", "Total Number","support", "importance"])
         if exclude_zero_coef:
             rules = rules.loc[rules.coef != 0]
         return rules

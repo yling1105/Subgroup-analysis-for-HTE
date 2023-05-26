@@ -9,9 +9,11 @@ import scipy.stats as stats
 import sklearn
 from sklearn.utils import check_array, check_random_state, check_X_y
 from typing import List
-
+import re
+from functools import reduce
 from causalml.inference.tree import UpliftTreeClassifier, UpliftRandomForestClassifier
 from causalml.inference.tree import uplift_tree_string, uplift_tree_plot
+from sklift.metrics import uplift_auc_score, qini_auc_score
 
 if version.parse(sklearn.__version__) >= version.parse('0.22.0'):
     from sklearn.utils._testing import ignore_warnings
@@ -20,6 +22,41 @@ else:
 
 MAX_INT = np.iinfo(np.int32).max
 
+class Rule():
+    """
+    Class for binary Rules from list of conditions
+    """
+    def __init__(self,
+                 rule_conditions,prediction_value):
+        self.conditions = set(rule_conditions)
+        self.support = min([x.support for x in rule_conditions])
+        self.nnt = min([x.nnt for x in rule_conditions])
+        self.prediction_value=prediction_value
+        self.rule_direction=None
+    def transform(self, X):
+        """Transform dataset.
+        Parameters
+        ----------
+        X: array-like matrix
+        Returns
+        -------
+        X_transformed: array-like matrix, shape=(n_samples, 1)
+        """
+        rule_applies = [condition.transform(X) for condition in self.conditions]
+        return reduce(lambda x,y: x * y, rule_applies)
+
+    def __str__(self):
+        return  " & ".join([x.__str__() for x in self.conditions])
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __hash__(self):
+        return sum([condition.__hash__() for condition in self.conditions])
+
+    def __eq__(self, other):
+        return self.__hash__() == other.__hash__()
+      
 
 class UpliftTreeNew(UpliftTreeClassifier):
     def __init__(self, control_name, max_features=None, max_depth=4, min_samples_leaf=100,
@@ -157,6 +194,16 @@ class UpliftTreeNew(UpliftTreeClassifier):
             results.append([filt.sum() - n_pos, n_pos])
 
         return results
+    
+    def eval_qini(self, X, trt, y, neg=True):
+        pred = self.predict(X)
+        tau = pred[:, 1] - pred[:, 0]
+        qini = qini_auc_score(y_true=y, uplift=tau, treatment=trt, negative_effect=neg)
+        return qini
+
+    def get_num_rules(self,alpha=0.05):
+        rules_set = extract_rules_from_uplift_tree(self,)
+
 
 class UpliftRfNewClassifier(UpliftRandomForestClassifier):
     """ Uplift Random Forest for Classification Task.
@@ -208,7 +255,7 @@ class UpliftRfNewClassifier(UpliftRandomForestClassifier):
                  n_reg=10,
                  evaluationFunction='KL',
                  normalization=True,
-                 n_jobs=-1,
+                 n_jobs=10,
                  joblib_prefer: str = "threads"):
 
         """
