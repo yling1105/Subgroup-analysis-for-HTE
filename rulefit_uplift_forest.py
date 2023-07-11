@@ -56,9 +56,9 @@ class RuleCondition():
         X_transformed: array-like matrix, shape=(n_samples, 1)
         """
         if self.operator == "<":
-            res =  1 * (X[:,self.feature_index] <= self.threshold)
+            res =  1 * (X[:,self.feature_index] < self.threshold)
         elif self.operator == ">=":
-            res = 1 * (X[:,self.feature_index] > self.threshold)
+            res = 1 * (X[:,self.feature_index] >= self.threshold)
         return res
 
     def __eq__(self, other):
@@ -275,6 +275,8 @@ class RuleEnsemble():
             res_=np.zeros([X.shape[0],len(rule_list)])
             res_[:,coefs!=0]=res
             return res_
+        
+        
     def __str__(self):
         return (map(lambda x: x.__str__(), self.rules)).__str__()
     
@@ -315,7 +317,7 @@ class RuleEnsemble():
         else:
             return df['split_val'], list(df[f_name].unique())
         return clusters
-        
+
 
 class CausalRuleEnsembling(BaseEstimator, TransformerMixin):
     """Rulefit class
@@ -360,6 +362,7 @@ class CausalRuleEnsembling(BaseEstimator, TransformerMixin):
             tree_depth=5,
             min_samples_leaf=50,
             min_samples_treatment=25,
+            n_estimator = 30,
             n_reg = 5,
             tree_eval_func = 'KL',
             sample_fract='default',
@@ -398,6 +401,7 @@ class CausalRuleEnsembling(BaseEstimator, TransformerMixin):
         self.cv=cv
         self.n_reg = n_reg
         self.tol=tol
+        self.n_estimator = n_estimator
         # LassoCV default max_iter is 1000 while LogisticRegressionCV 100.
         self.max_iter=1000 if 'regress' else 1000
         self.n_jobs=n_jobs
@@ -445,7 +449,8 @@ class CausalRuleEnsembling(BaseEstimator, TransformerMixin):
             ## initialise tree generator
             if self.tree_generator is None:
                 self.sample_fract_=min(0.5,(100+6*np.sqrt(N))/N)
-                self.tree_generator = UpliftRfNewClassifier(control_name='control', n_estimators=100,
+                self.tree_generator = UpliftRfNewClassifier(control_name='control', 
+                                                            n_estimators=self.n_estimator,
                                                             max_features=30,
                                                             max_depth=self.tree_depth, # reduce
                                                             min_samples_leaf=self.min_samples_leaf,
@@ -527,13 +532,6 @@ class CausalRuleEnsembling(BaseEstimator, TransformerMixin):
                 if X_rules.shape[0] >0:
                     X_concat = np.concatenate((X_concat, X_rules), axis=1)
         return self.lscv.predict(X_concat)
-    
-    def ensemble_predict(self, X):
-        """
-        Predict outcomes get from intermediate ensemble algorithm
-        """
-        return self.tree_generator.predict(X)
-
 
     def predict_proba(self, X):
         """Predict outcome probability for X, if model type supports probability prediction method
@@ -719,3 +717,27 @@ class CausalRuleEnsembling(BaseEstimator, TransformerMixin):
         pehe_final = (np.sum(l_de_final) + np.sum(plugin_final))/X.shape[0]
         
         return pehe_ensemble, pehe_final
+
+    def extract_rule_matrix(self, X):
+        """
+        Predict outcome for X
+        """
+        X_concat=np.zeros([X.shape[0],0])
+        if 'r' in self.model_type:
+            rule_coefs=self.coef_[-len(self.rule_ensemble.rules):]
+            if len(rule_coefs)>0:
+                X_rules = self.rule_ensemble.transform(X,coefs=rule_coefs)
+                if X_rules.shape[0] > 0:
+                    X_concat = np.concatenate((X_concat, X_rules), axis=1)
+        return X_concat
+    
+    def extract_rule_matrix_all(self, X):
+        """Predict outcome for X
+        """
+        X_concat=np.zeros([X.shape[0],0])
+        if 'r' in self.model_type:
+            rule_coefs=self.coef_[-len(self.rule_ensemble.rules):]
+            X_rules = self.rule_ensemble.transform(X)
+            if X_rules.shape[0] > 0:
+                X_concat = np.concatenate((X_concat, X_rules), axis=1)
+        return X_concat

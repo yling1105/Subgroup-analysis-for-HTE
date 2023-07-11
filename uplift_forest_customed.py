@@ -22,6 +22,63 @@ else:
 
 MAX_INT = np.iinfo(np.int32).max
 
+
+class RuleCondition():
+    """Class for binary rule condition
+    Warning: this class should not be used directly.
+    """
+
+    def __init__(self,
+                 feature_index,
+                 threshold,
+                 operator,
+                 support,
+                 nnt,
+                 n_treatment,
+                 n_control,
+                 feature_name = None):
+        self.feature_index = feature_index
+        self.threshold = threshold
+        self.operator = operator
+        self.support = support
+        self.n_treatment = n_treatment,
+        self.n_control = n_control,
+        self.feature_name = feature_name
+        self.nnt = nnt
+
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __str__(self):
+        if self.feature_name:
+            feature = self.feature_name
+        else:
+            feature = self.feature_index
+        return "%s %s %s" % (feature, self.operator, self.threshold)
+
+    def transform(self, X):
+        """Transform dataset.
+        Parameters
+        ----------
+        X: array-like matrix, shape=(n_samples, n_features)
+        Returns
+        -------
+        X_transformed: array-like matrix, shape=(n_samples, 1)
+        """
+        if self.operator == "<":
+            res =  1 * (X[:,self.feature_index] <= self.threshold)
+        elif self.operator == ">=":
+            res = 1 * (X[:,self.feature_index] > self.threshold)
+        return res
+
+    def __eq__(self, other):
+        return self.__hash__() == other.__hash__()
+
+    def __hash__(self):
+        return hash((self.feature_index, self.threshold, self.operator, self.feature_name))
+    
+
 class Rule():
     """
     Class for binary Rules from list of conditions
@@ -200,9 +257,22 @@ class UpliftTreeNew(UpliftTreeClassifier):
         tau = pred[:, 1] - pred[:, 0]
         qini = qini_auc_score(y_true=y, uplift=tau, treatment=trt, negative_effect=neg)
         return qini
+    
+    def get_rules(self, alpha=0.05):
+        rules_cnt = []
+        tree = self.fitted_uplift_tree
+        def traverse(node, alpha = alpha, branch=None):
 
-    def get_num_rules(self,alpha=0.05):
-        rules_set = extract_rules_from_uplift_tree(self,)
+            if node.trueBranch == None and node.falseBranch == None:
+                if node.upliftScore[1] < alpha:
+                    rules_cnt.append(1)
+            else:
+                if node.trueBranch != None:
+                    traverse(node.trueBranch, alpha, branch='l',)
+                if node.falseBranch != None:
+                    traverse(node.falseBranch, alpha, branch = 'r')
+        traverse(node = tree, alpha = alpha)
+        return rules_cnt
 
 
 class UpliftRfNewClassifier(UpliftRandomForestClassifier):
