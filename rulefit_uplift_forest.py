@@ -159,11 +159,10 @@ class Rule():
 
 
 def extract_rules_from_uplift_tree(tree, alpha = 0.05, feature_names=None):
-    rules = set()
+    rules = []
     ttl_sample_size = int(re.findall(r"\d+", tree.summary['group_size'])[0]) + int(re.findall(r"\d+", tree.summary['group_size'])[1])
     def traverse(node, sample_size=ttl_sample_size, alpha = alpha , conditions=[], branch=None, parent_col=None, parent_val=None):
         cnt = 1
-
         node_col = node.col
         node_col = feature_names[node_col]
         node_val = node.value
@@ -195,7 +194,9 @@ def extract_rules_from_uplift_tree(tree, alpha = 0.05, feature_names=None):
             if node.upliftScore[1] < alpha:
                 #print(cnt)
                 new_rule = Rule(new_conditions, node.matchScore)
-                rules.update([new_rule])
+                # rules.update([new_rule])
+                if new_rule not in rules:
+                    rules.append(new_rule)
                 #print(rules)
                 cnt += 1
         else:
@@ -235,18 +236,18 @@ class RuleEnsemble():
                  feature_names=None):
         self.tree_list = tree_list
         self.feature_names = feature_names
-        self.rules = set()
-        ## TODO: Move this out of __init__
+        self.rules = []
         self._extract_rules()
-        self.rules=list(self.rules)
         self.rule_clusters = {}
 
     def _extract_rules(self):
         """Recursively extract rules from each tree in the ensemble
         """
         for tree in self.tree_list:
-            rules = extract_rules_from_uplift_tree(tree[0].fitted_uplift_tree,feature_names=self.feature_names)
-            self.rules.update(rules)
+            rule = extract_rules_from_uplift_tree(tree[0].fitted_uplift_tree,feature_names=self.feature_names)
+            for r in rule:
+                if r not in self.rules:
+                    self.rules.append(r)
 
     def filter_rules(self, func):
         self.rules = filter(lambda x: func(x), self.rules)
@@ -267,12 +268,12 @@ class RuleEnsemble():
         X_transformed: array-like matrix, shape=(n_samples, n_out)
             Transformed dataset. Each column represents one rule.
         """
-        rule_list=list(self.rules)
+        #rule_list=list(self.rules)
         if coefs is None:
-            return np.array([rule.transform(X) for rule in rule_list]).T
+            return np.array([rule.transform(X) for rule in self.rules]).T
         else: # else use the coefs to filter the rules we bother to interpret
-            res= np.array([rule_list[i_rule].transform(X) for i_rule in np.arange(len(rule_list)) if coefs[i_rule]!=0]).T
-            res_=np.zeros([X.shape[0],len(rule_list)])
+            res= np.array([self.rules[i_rule].transform(X) for i_rule in np.arange(len(self.rules)) if coefs[i_rule]!=0]).T
+            res_=np.zeros([X.shape[0],len(self.rules)])
             res_[:,coefs!=0]=res
             return res_
         
