@@ -733,7 +733,8 @@ class CausalRuleEnsembling(BaseEstimator, TransformerMixin):
         return X_concat
     
     def extract_rule_matrix_all(self, X):
-        """Predict outcome for X
+        """
+        Predict outcome for X
         """
         X_concat=np.zeros([X.shape[0],0])
         if 'r' in self.model_type:

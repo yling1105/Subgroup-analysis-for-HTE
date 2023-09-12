@@ -81,7 +81,7 @@ def str2loc(loc):
         loc = loc.replace("Brainstem", "Pons")
 
         return loc, side
-    
+
 temp_ichloc=df.apply(lambda row: str2loc(row['CT1_ICHLOC']), axis=1, result_type='expand').rename(columns={0:'CT1_ICHLOC', 1:'CT1_ICHSIDE'})
 df = pd.concat([df.drop('CT1_ICHLOC', axis = 1), temp_ichloc], axis=1)
 others=['Periventricular', 'Primary IVH', 'Multiple Hemorrhages - Deep', 'Corona Radiata']
@@ -172,4 +172,5 @@ df_test['source'] = ['atach2']*len(df_test)
 df_imputed['group'] = ['train']*len(df_imputed)
 df_test['group'] = ['test']*len(df_test)
 df_all = pd.concat([df_imputed, df_test], axis=0)
+df_all['index'] = np.arange(0, len(df_all))
 df_all.to_csv('temp_data/imputed_all.csv')
